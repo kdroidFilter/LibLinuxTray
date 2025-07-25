@@ -126,7 +126,7 @@ void SNIWrapperManager::destroySNI(StatusNotifierItem* sni) {
 }
 
 void SNIWrapperManager::processEvents() {
-    app->processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 100);
+    app->processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 5);
 }
 
 // -----------------------------------------------------------------------------
@@ -392,7 +392,6 @@ int sni_exec(void) {
     while (sni_running.load()) {
         try {
             sni_process_events();
-            usleep(100000); // 100ms
         } catch (const std::exception& e) {
             fprintf(stderr, "Exception dans sni_exec: %s\n", e.what());
         } catch (...) {
