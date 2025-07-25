@@ -19,8 +19,10 @@
 #include <QPoint>
 #include <QMutex>
 #include <unistd.h>  // For sleep in sni_exec
+#include <atomic>
 
-static bool debug = false;
+static std::atomic<bool> sni_running{true};
+static bool debug = true;
 static int  trayCount = 0;
 
 // -----------------------------------------------------------------------------
@@ -387,20 +389,28 @@ void show_notification(void* handle, const char* title, const char* msg, const c
 // ------------------- Event loop management -------------------
 
 int sni_exec(void) {
-    // Simuler une boucle d'événements dans le thread principal
-    // qui permet à Qt de fonctionner dans son thread dédié
-    while (true) {
-        // Traiter les événements périodiquement pour assurer la réactivité
-        sni_process_events();
-        // Pause pour éviter de surcharger le CPU
-        usleep(100000); // 100ms
+    while (sni_running.load()) {
+        try {
+            sni_process_events();
+            usleep(100000); // 100ms
+        } catch (const std::exception& e) {
+            fprintf(stderr, "Exception dans sni_exec: %s\n", e.what());
+        } catch (...) {
+            fprintf(stderr, "Exception inconnue dans sni_exec\n");
+        }
     }
+    sni_running.store(true); // Reset for reuse
     return 0;
 }
 
+EXPORT void sni_stop_exec(void) {
+    sni_running.store(false);
+}
+
 void sni_process_events(void) {
-    // Utiliser SNIWrapperManager qui a déjà une méthode processEvents
-    SNIWrapperManager::instance()->processEvents();
+    QtThreadManager::instance()->runBlocking([] {
+        SNIWrapperManager::instance()->processEvents();
+    });
 }
 
 // Pas besoin d'inclure le fichier .moc - AUTOMOC s'en chargera

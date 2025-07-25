@@ -15,6 +15,7 @@ QtThreadManager* QtThreadManager::instance()
         // Wait until QApplication is created in the new thread
         QMutexLocker locker(&t->readyMutex);
         t->readyCond.wait(&t->readyMutex, 5000); // timeout after 5 s
+        QThread::msleep(100); // Add this line to give time for exec() to start and avoid race conditions
         return t;
     }();
     return inst;
