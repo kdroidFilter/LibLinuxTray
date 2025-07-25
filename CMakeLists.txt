@@ -4,6 +4,8 @@ project(StatusNotifierItemExample LANGUAGES CXX C)  # Ajout de C pour le support
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)  # Enable automatic moc generation
+set(CMAKE_AUTORCC ON)  # Enable automatic rcc generation
+set(CMAKE_AUTOUIC ON)  # Enable automatic uic generation
 set(CMAKE_INCLUDE_CURRENT_DIR ON)  # Include current directory for generated files
 
 # Qt5
@@ -33,6 +35,7 @@ set(SOURCES
         src/statusnotifieritem.cpp
         src/dbustypes.cpp
         src/sni_wrapper.cpp  # Ajout du wrapper
+        src/qtthreadmanager.cpp  # Ajout du thread manager
         ${statusnotifier_adaptor_src}
 )
 
@@ -40,6 +43,7 @@ set(HEADERS
         include/statusnotifieritem.h
         include/dbustypes.h
         include/sni_wrapper.h  # Ajout du header pour le wrapper
+        include/qtthreadmanager.h  # Ajout du header pour le thread manager
 )
 
 # S'assurer que le fichier d'adaptateur généré est reconnu
