@@ -1,9 +1,13 @@
-// qtthreadmanager.h
+// File: qtthreadmanager.h
 #pragma once
+
 #include <QThread>
 #include <QApplication>
 #include <QMutex>
+#include <QWaitCondition>
 #include <functional>
+#include <QEventLoop>
+#include <QSemaphore>  // Optional, but useful for alternatives
 
 class QtThreadManager : public QThread
 {
@@ -12,18 +16,23 @@ public:
     static QtThreadManager* instance();
     static void shutdown();
 
-    // Exécute fn dans le thread Qt et attend la fin (blockant)
+    // Execute fn in the Qt thread and block until it finishes
     void runBlocking(const std::function<void()>& fn);
 
-    // Variante asynchrone (queued, ne bloque pas l’appelant)
+    // Execute fn in the Qt thread asynchronously
     void runAsync(const std::function<void()>& fn);
 
+    // Access to the QApplication instance
+    QApplication* app() const { return m_app; }
+
 protected:
-    void run() override;          // crée QApplication + exec()
+    void run() override;  // creates QApplication and starts the event loop
 
 private:
-    QtThreadManager() = default;
+    QtThreadManager();
     ~QtThreadManager() override = default;
 
     QApplication* m_app = nullptr;
+    QMutex        readyMutex;
+    QWaitCondition readyCond;
 };

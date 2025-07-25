@@ -65,17 +65,9 @@ void customMessageHandler(QtMsgType type, const QMessageLogContext &context, con
 // Helper: get safe connection type to avoid deadlocks when already on Qt thread
 // -----------------------------------------------------------------------------
 static inline Qt::ConnectionType safeConn(QObject* receiver) {
-    if (!receiver) {
-        return Qt::DirectConnection; // Valeur par défaut sécurisée
-    }
-
     if (QThread::currentThread() == receiver->thread()) {
         return Qt::DirectConnection;
-    } else if (QThread::currentThread() == QCoreApplication::instance()->thread()) {
-        // Si nous sommes dans le thread principal mais pas dans le thread de l'objet
-        return Qt::BlockingQueuedConnection;
     } else {
-        // Dans un autre thread (ni Qt, ni main)
         return Qt::BlockingQueuedConnection;
     }
 }
@@ -89,6 +81,7 @@ SNIWrapperManager* SNIWrapperManager::instance() {
     if (!s_instance) {
         QMutexLocker locker(&mutex);
         if (!s_instance) {
+            // Utiliser QtThreadManager pour créer SNIWrapperManager dans le thread Qt
             QtThreadManager::instance()->runBlocking([] {
                 s_instance = new SNIWrapperManager();
             });
@@ -99,10 +92,8 @@ SNIWrapperManager* SNIWrapperManager::instance() {
 
 void SNIWrapperManager::shutdown() {
     if (s_instance) {
-        QtThreadManager::instance()->runBlocking([] {
-            delete s_instance;
-            s_instance = nullptr;
-        });
+        delete s_instance;
+        s_instance = nullptr;
     }
 }
 
@@ -147,7 +138,7 @@ int init_tray_system(void) {
 
 void shutdown_tray_system(void) {
     SNIWrapperManager::shutdown();
-    QtThreadManager::shutdown();
+    QtThreadManager::shutdown(); // Va maintenant quitter proprement QApplication
 }
 
 void* create_tray(const char* id) {
@@ -396,8 +387,8 @@ void show_notification(void* handle, const char* title, const char* msg, const c
 // ------------------- Event loop management -------------------
 
 int sni_exec(void) {
-    // Permettre au thread principal de se synchroniser avec le thread Qt
-    // et de recevoir les signaux/événements correctement
+    // Simuler une boucle d'événements dans le thread principal
+    // qui permet à Qt de fonctionner dans son thread dédié
     while (true) {
         // Traiter les événements périodiquement pour assurer la réactivité
         sni_process_events();
@@ -408,10 +399,8 @@ int sni_exec(void) {
 }
 
 void sni_process_events(void) {
-    // Optional: process events explicitly, though Qt thread is already running exec()
-    QtThreadManager::instance()->runBlocking([] {
-        qApp->processEvents(QEventLoop::AllEvents, 100);
-    });
+    // Utiliser SNIWrapperManager qui a déjà une méthode processEvents
+    SNIWrapperManager::instance()->processEvents();
 }
 
 // Pas besoin d'inclure le fichier .moc - AUTOMOC s'en chargera
