@@ -22,7 +22,7 @@
 #include <atomic>
 
 static std::atomic<bool> sni_running{true};
-static bool debug = false;  // Set to false to reduce debug output
+static bool debug = false; // Set to false to reduce debug output
 static int trayCount = 0;
 
 // -----------------------------------------------------------------------------
@@ -39,7 +39,10 @@ void customMessageHandler(QtMsgType type, const QMessageLogContext &context, con
         msg.contains("QSocketNotifier: Can only be used with threads started with QThread") ||
         msg.contains("QObject::startTimer: Timers can only be used with threads started with QThread") ||
         msg.contains("QMetaObject::invokeMethod: Dead lock detected") ||
-        msg.contains("QObject::connect: Cannot queue arguments")) {
+        msg.contains("QObject::connect: Cannot queue arguments") ||
+        msg.contains("QSettings::value: Empty key passed")||
+        msg.contains("Cannot create children for a parent that is in a different thread") ||
+        msg.contains("Cannot filter events for objects in a different thread")) {
         return;
     }
 
@@ -48,31 +51,31 @@ void customMessageHandler(QtMsgType type, const QMessageLogContext &context, con
     const char *function = context.function ? context.function : "unknown";
 
     switch (type) {
-    case QtDebugMsg:
-        if (debug) fprintf(stderr, "Debug: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        break;
-    case QtInfoMsg:
-        fprintf(stderr, "Info: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        break;
-    case QtWarningMsg:
-        fprintf(stderr, "Warning: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        break;
-    case QtCriticalMsg:
-        fprintf(stderr, "Critical: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        break;
-    case QtFatalMsg:
-        fprintf(stderr, "Fatal: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        if (!msg.contains("QWidget: Cannot create a QWidget without QApplication")) {
-            abort();
-        }
-        break;
+        case QtDebugMsg:
+            if (debug) fprintf(stderr, "Debug: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
+            break;
+        case QtInfoMsg:
+            fprintf(stderr, "Info: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
+            break;
+        case QtWarningMsg:
+            fprintf(stderr, "Warning: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
+            break;
+        case QtCriticalMsg:
+            fprintf(stderr, "Critical: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
+            break;
+        case QtFatalMsg:
+            fprintf(stderr, "Fatal: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
+            if (!msg.contains("QWidget: Cannot create a QWidget without QApplication")) {
+                abort();
+            }
+            break;
     }
 }
 
 // -----------------------------------------------------------------------------
 // Helper: get safe connection type to avoid deadlocks
 // -----------------------------------------------------------------------------
-static inline Qt::ConnectionType safeConn(QObject* receiver) {
+static inline Qt::ConnectionType safeConn(QObject *receiver) {
     if (!receiver) return Qt::QueuedConnection;
 
     if (QThread::currentThread() == receiver->thread()) {
@@ -85,9 +88,9 @@ static inline Qt::ConnectionType safeConn(QObject* receiver) {
 // -----------------------------------------------------------------------------
 // SNIWrapperManager implementation
 // -----------------------------------------------------------------------------
-SNIWrapperManager* SNIWrapperManager::s_instance = nullptr;
+SNIWrapperManager *SNIWrapperManager::s_instance = nullptr;
 
-SNIWrapperManager* SNIWrapperManager::instance() {
+SNIWrapperManager *SNIWrapperManager::instance() {
     static QMutex mutex;
 
     if (!s_instance) {
@@ -130,11 +133,11 @@ void SNIWrapperManager::startEventLoop() {
     // No-op; event loop is managed by QtThreadManager
 }
 
-StatusNotifierItem* SNIWrapperManager::createSNI(const char* id) {
+StatusNotifierItem *SNIWrapperManager::createSNI(const char *id) {
     return new StatusNotifierItem(QString::fromUtf8(id), this);
 }
 
-void SNIWrapperManager::destroySNI(StatusNotifierItem* sni) {
+void SNIWrapperManager::destroySNI(StatusNotifierItem *sni) {
     if (!sni) return;
     sni->unregister();
     sni->deleteLater();
@@ -150,26 +153,34 @@ void SNIWrapperManager::processEvents() {
 // C API Implementation
 // -----------------------------------------------------------------------------
 
+// sni_wrapper.cpp
 int init_tray_system(void) {
+    static bool handlerInstalled = false;
+    if (!handlerInstalled) {
+        handlerInstalled = true;
+        qInstallMessageHandler(customMessageHandler); // ← installé avant tout
+    }
+
     try {
-        SNIWrapperManager::instance();  // Ensures creation in Qt thread
+        SNIWrapperManager::instance();
         return 0;
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         fprintf(stderr, "Failed to initialize tray system: %s\n", e.what());
         return -1;
     }
 }
+
 
 void shutdown_tray_system(void) {
     SNIWrapperManager::shutdown();
     QtThreadManager::shutdown();
 }
 
-void* create_tray(const char* id) {
+void *create_tray(const char *id) {
     if (!id) return nullptr;
 
     trayCount++;
-    StatusNotifierItem* result = nullptr;
+    StatusNotifierItem *result = nullptr;
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [&]() {
@@ -179,11 +190,11 @@ void* create_tray(const char* id) {
     return result;
 }
 
-void destroy_handle(void* handle) {
+void destroy_handle(void *handle) {
     if (!handle) return;
 
     auto mgr = SNIWrapperManager::instance();
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
 
     QMetaObject::invokeMethod(mgr, [mgr, sni]() {
         mgr->destroySNI(sni);
@@ -200,10 +211,10 @@ void destroy_handle(void* handle) {
 
 // ------------------- Tray property setters -------------------
 
-void set_title(void* handle, const char* title) {
+void set_title(void *handle, const char *title) {
     if (!handle || !title) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
     QString qtitle = QString::fromUtf8(title);
 
     QMetaObject::invokeMethod(sni, [sni, qtitle]() {
@@ -211,10 +222,10 @@ void set_title(void* handle, const char* title) {
     }, safeConn(sni));
 }
 
-void set_status(void* handle, const char* status) {
+void set_status(void *handle, const char *status) {
     if (!handle || !status) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
     QString qstatus = QString::fromUtf8(status);
 
     QMetaObject::invokeMethod(sni, [sni, qstatus]() {
@@ -222,10 +233,10 @@ void set_status(void* handle, const char* status) {
     }, safeConn(sni));
 }
 
-void set_icon_by_name(void* handle, const char* name) {
+void set_icon_by_name(void *handle, const char *name) {
     if (!handle || !name) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
     QString qname = QString::fromUtf8(name);
 
     QMetaObject::invokeMethod(sni, [sni, qname]() {
@@ -233,10 +244,10 @@ void set_icon_by_name(void* handle, const char* name) {
     }, safeConn(sni));
 }
 
-void set_icon_by_path(void* handle, const char* path) {
+void set_icon_by_path(void *handle, const char *path) {
     if (!handle || !path) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
     QString qpath = QString::fromUtf8(path);
 
     QMetaObject::invokeMethod(sni, [sni, qpath]() {
@@ -246,15 +257,15 @@ void set_icon_by_path(void* handle, const char* path) {
     }, safeConn(sni));
 }
 
-void update_icon_by_path(void* handle, const char* path) {
+void update_icon_by_path(void *handle, const char *path) {
     // Force complete icon update
     set_icon_by_path(handle, path);
 }
 
-void set_tooltip_title(void* handle, const char* title) {
+void set_tooltip_title(void *handle, const char *title) {
     if (!handle || !title) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
     QString qtitle = QString::fromUtf8(title);
 
     QMetaObject::invokeMethod(sni, [sni, qtitle]() {
@@ -262,10 +273,10 @@ void set_tooltip_title(void* handle, const char* title) {
     }, safeConn(sni));
 }
 
-void set_tooltip_subtitle(void* handle, const char* subTitle) {
+void set_tooltip_subtitle(void *handle, const char *subTitle) {
     if (!handle || !subTitle) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
     QString qsubtitle = QString::fromUtf8(subTitle);
 
     QMetaObject::invokeMethod(sni, [sni, qsubtitle]() {
@@ -275,8 +286,8 @@ void set_tooltip_subtitle(void* handle, const char* subTitle) {
 
 // ------------------- Menu creation & management -------------------
 
-void* create_menu(void) {
-    QMenu* result = nullptr;
+void *create_menu(void) {
+    QMenu *result = nullptr;
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [&]() {
@@ -287,10 +298,10 @@ void* create_menu(void) {
     return result;
 }
 
-void destroy_menu(void* menu_handle) {
+void destroy_menu(void *menu_handle) {
     if (!menu_handle) return;
 
-    QMenu* menu = static_cast<QMenu*>(menu_handle);
+    QMenu *menu = static_cast<QMenu *>(menu_handle);
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [menu]() {
@@ -308,11 +319,11 @@ void destroy_menu(void* menu_handle) {
     }, safeConn(mgr));
 }
 
-void set_context_menu(void* handle, void* menu_handle) {
+void set_context_menu(void *handle, void *menu_handle) {
     if (!handle) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
-    QMenu* menu = menu_handle ? static_cast<QMenu*>(menu_handle) : nullptr;
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
+    QMenu *menu = menu_handle ? static_cast<QMenu *>(menu_handle) : nullptr;
 
     QMetaObject::invokeMethod(sni, [sni, menu]() {
         // Set the new context menu (StatusNotifierItem handles cleanup internally)
@@ -333,16 +344,16 @@ void set_context_menu(void* handle, void* menu_handle) {
     }, safeConn(sni));
 }
 
-void* add_menu_action(void* menu_handle, const char* text, ActionCallback cb, void* data) {
+void *add_menu_action(void *menu_handle, const char *text, ActionCallback cb, void *data) {
     if (!menu_handle || !text) return nullptr;
 
-    QMenu* menu = static_cast<QMenu*>(menu_handle);
+    QMenu *menu = static_cast<QMenu *>(menu_handle);
     QString qtext = QString::fromUtf8(text);
-    QAction* result = nullptr;
+    QAction *result = nullptr;
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [&]() {
-        QAction* action = menu->addAction(qtext);
+        QAction *action = menu->addAction(qtext);
         if (cb) {
             QObject::connect(action, &QAction::triggered, [cb, data]() {
                 if (cb) cb(data);
@@ -354,16 +365,16 @@ void* add_menu_action(void* menu_handle, const char* text, ActionCallback cb, vo
     return result;
 }
 
-void* add_disabled_menu_action(void* menu_handle, const char* text, ActionCallback cb, void* data) {
+void *add_disabled_menu_action(void *menu_handle, const char *text, ActionCallback cb, void *data) {
     if (!menu_handle || !text) return nullptr;
 
-    QMenu* menu = static_cast<QMenu*>(menu_handle);
+    QMenu *menu = static_cast<QMenu *>(menu_handle);
     QString qtext = QString::fromUtf8(text);
-    QAction* result = nullptr;
+    QAction *result = nullptr;
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [&]() {
-        QAction* action = menu->addAction(qtext);
+        QAction *action = menu->addAction(qtext);
         action->setEnabled(false);
         if (cb) {
             QObject::connect(action, &QAction::triggered, [cb, data]() {
@@ -376,15 +387,15 @@ void* add_disabled_menu_action(void* menu_handle, const char* text, ActionCallba
     return result;
 }
 
-void add_checkable_menu_action(void* menu_handle, const char* text, int checked, ActionCallback cb, void* data) {
+void add_checkable_menu_action(void *menu_handle, const char *text, int checked, ActionCallback cb, void *data) {
     if (!menu_handle || !text) return;
 
-    QMenu* menu = static_cast<QMenu*>(menu_handle);
+    QMenu *menu = static_cast<QMenu *>(menu_handle);
     QString qtext = QString::fromUtf8(text);
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [=]() {
-        QAction* action = menu->addAction(qtext);
+        QAction *action = menu->addAction(qtext);
         action->setCheckable(true);
         action->setChecked(checked != 0);
         if (cb) {
@@ -395,10 +406,10 @@ void add_checkable_menu_action(void* menu_handle, const char* text, int checked,
     }, safeConn(mgr));
 }
 
-void add_menu_separator(void* menu_handle) {
+void add_menu_separator(void *menu_handle) {
     if (!menu_handle) return;
 
-    QMenu* menu = static_cast<QMenu*>(menu_handle);
+    QMenu *menu = static_cast<QMenu *>(menu_handle);
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [menu]() {
@@ -406,12 +417,12 @@ void add_menu_separator(void* menu_handle) {
     }, safeConn(mgr));
 }
 
-void* create_submenu(void* menu_handle, const char* text) {
+void *create_submenu(void *menu_handle, const char *text) {
     if (!menu_handle || !text) return nullptr;
 
-    QMenu* parentMenu = static_cast<QMenu*>(menu_handle);
+    QMenu *parentMenu = static_cast<QMenu *>(menu_handle);
     QString qtext = QString::fromUtf8(text);
-    QMenu* subMenu = nullptr;
+    QMenu *subMenu = nullptr;
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [&]() {
@@ -422,10 +433,10 @@ void* create_submenu(void* menu_handle, const char* text) {
     return subMenu;
 }
 
-void set_menu_item_text(void* menu_item_handle, const char* text) {
+void set_menu_item_text(void *menu_item_handle, const char *text) {
     if (!menu_item_handle || !text) return;
 
-    QAction* action = static_cast<QAction*>(menu_item_handle);
+    QAction *action = static_cast<QAction *>(menu_item_handle);
     QString qtext = QString::fromUtf8(text);
     auto mgr = SNIWrapperManager::instance();
 
@@ -434,10 +445,10 @@ void set_menu_item_text(void* menu_item_handle, const char* text) {
     }, safeConn(mgr));
 }
 
-void set_menu_item_enabled(void* menu_item_handle, int enabled) {
+void set_menu_item_enabled(void *menu_item_handle, int enabled) {
     if (!menu_item_handle) return;
 
-    QAction* action = static_cast<QAction*>(menu_item_handle);
+    QAction *action = static_cast<QAction *>(menu_item_handle);
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [action, enabled]() {
@@ -445,11 +456,11 @@ void set_menu_item_enabled(void* menu_item_handle, int enabled) {
     }, safeConn(mgr));
 }
 
-void remove_menu_item(void* menu_handle, void* menu_item_handle) {
+void remove_menu_item(void *menu_handle, void *menu_item_handle) {
     if (!menu_handle || !menu_item_handle) return;
 
-    QMenu* menu = static_cast<QMenu*>(menu_handle);
-    QAction* action = static_cast<QAction*>(menu_item_handle);
+    QMenu *menu = static_cast<QMenu *>(menu_handle);
+    QAction *action = static_cast<QAction *>(menu_item_handle);
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [menu, action]() {
@@ -460,10 +471,10 @@ void remove_menu_item(void* menu_handle, void* menu_item_handle) {
 
 // ------------------- Tray update function -------------------
 
-void tray_update(void* handle) {
+void tray_update(void *handle) {
     if (!handle) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [sni]() {
@@ -498,10 +509,10 @@ void tray_update(void* handle) {
 
 // ------------------- Tray event callbacks -------------------
 
-void set_activate_callback(void* handle, ActivateCallback cb, void* data) {
+void set_activate_callback(void *handle, ActivateCallback cb, void *data) {
     if (!handle) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
 
     QMetaObject::invokeMethod(sni, [sni, cb, data]() {
         // Disconnect previous connections
@@ -509,18 +520,18 @@ void set_activate_callback(void* handle, ActivateCallback cb, void* data) {
 
         if (cb) {
             QObject::connect(sni, &StatusNotifierItem::activateRequested, sni,
-                           [cb, data](const QPoint& pos) {
-                               if (cb) cb(pos.x(), pos.y(), data);
-                           },
-                           Qt::DirectConnection);
+                             [cb, data](const QPoint &pos) {
+                                 if (cb) cb(pos.x(), pos.y(), data);
+                             },
+                             Qt::DirectConnection);
         }
     }, safeConn(sni));
 }
 
-void set_secondary_activate_callback(void* handle, SecondaryActivateCallback cb, void* data) {
+void set_secondary_activate_callback(void *handle, SecondaryActivateCallback cb, void *data) {
     if (!handle) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
 
     QMetaObject::invokeMethod(sni, [sni, cb, data]() {
         // Disconnect previous connections
@@ -528,18 +539,18 @@ void set_secondary_activate_callback(void* handle, SecondaryActivateCallback cb,
 
         if (cb) {
             QObject::connect(sni, &StatusNotifierItem::secondaryActivateRequested, sni,
-                           [cb, data](const QPoint& pos) {
-                               if (cb) cb(pos.x(), pos.y(), data);
-                           },
-                           Qt::DirectConnection);
+                             [cb, data](const QPoint &pos) {
+                                 if (cb) cb(pos.x(), pos.y(), data);
+                             },
+                             Qt::DirectConnection);
         }
     }, safeConn(sni));
 }
 
-void set_scroll_callback(void* handle, ScrollCallback cb, void* data) {
+void set_scroll_callback(void *handle, ScrollCallback cb, void *data) {
     if (!handle) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
 
     QMetaObject::invokeMethod(sni, [sni, cb, data]() {
         // Disconnect previous connections
@@ -547,20 +558,20 @@ void set_scroll_callback(void* handle, ScrollCallback cb, void* data) {
 
         if (cb) {
             QObject::connect(sni, &StatusNotifierItem::scrollRequested, sni,
-                           [cb, data](int delta, Qt::Orientation orientation) {
-                               if (cb) cb(delta, orientation == Qt::Horizontal ? 1 : 0, data);
-                           },
-                           Qt::DirectConnection);
+                             [cb, data](int delta, Qt::Orientation orientation) {
+                                 if (cb) cb(delta, orientation == Qt::Horizontal ? 1 : 0, data);
+                             },
+                             Qt::DirectConnection);
         }
     }, safeConn(sni));
 }
 
 // ------------------- Notifications -------------------
 
-void show_notification(void* handle, const char* title, const char* msg, const char* iconName, int secs) {
+void show_notification(void *handle, const char *title, const char *msg, const char *iconName, int secs) {
     if (!handle) return;
 
-    StatusNotifierItem* sni = static_cast<StatusNotifierItem*>(handle);
+    StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
     QString qtitle = title ? QString::fromUtf8(title) : QString();
     QString qmsg = msg ? QString::fromUtf8(msg) : QString();
     QString qiconName = iconName ? QString::fromUtf8(iconName) : QString();
@@ -577,7 +588,7 @@ int sni_exec(void) {
         try {
             sni_process_events();
             usleep(100000); // 100ms
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             fprintf(stderr, "Exception in sni_exec: %s\n", e.what());
         } catch (...) {
             fprintf(stderr, "Unknown exception in sni_exec\n");
@@ -600,15 +611,15 @@ void sni_process_events(void) {
     });
 }
 
-void clear_menu(void* menu_handle) {
+void clear_menu(void *menu_handle) {
     if (!menu_handle) return;
 
-    QMenu* menu = static_cast<QMenu*>(menu_handle);
+    QMenu *menu = static_cast<QMenu *>(menu_handle);
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [menu]() {
         // Disconnect all signals from actions
-        for (QAction* action : menu->actions()) {
+        for (QAction *action: menu->actions()) {
             action->disconnect();
         }
         // Clear all actions
