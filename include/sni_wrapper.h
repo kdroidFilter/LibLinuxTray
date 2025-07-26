@@ -87,6 +87,12 @@ EXPORT int  sni_exec(void);
 EXPORT void sni_process_events(void);
 EXPORT void sni_stop_exec(void);
 
+/* Force update of the tray (icon, tooltip, menu) */
+EXPORT void tray_update(void* handle);
+
+/* Clear all items from a menu */
+EXPORT void clear_menu(void* menu_handle);
+
 #ifdef __cplusplus
 }
 #endif

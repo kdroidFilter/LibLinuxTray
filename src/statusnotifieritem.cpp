@@ -375,3 +375,10 @@ void StatusNotifierItem::unregister() {
     mSessionBus.unregisterObject(QLatin1String("/StatusNotifierItem"));
     QDBusConnection::disconnectFromBus(mService);
 }
+
+void StatusNotifierItem::forceUpdate()
+{
+    Q_EMIT mAdaptor->NewIcon();
+    Q_EMIT mAdaptor->NewToolTip();
+    Q_EMIT mAdaptor->NewStatus(mStatus);
+}

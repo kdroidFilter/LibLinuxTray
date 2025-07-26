@@ -1,4 +1,3 @@
-// File: qtthreadmanager.cpp
 #include "qtthreadmanager.h"
 #include <QMetaObject>
 
