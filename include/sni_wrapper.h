@@ -87,6 +87,9 @@ EXPORT int  sni_exec(void);
 EXPORT void sni_process_events(void);
 EXPORT void sni_stop_exec(void);
 
+/* Manage debug mode  */
+EXPORT void sni_set_debug_mode(int enabled);
+
 /* Force update of the tray (icon, tooltip, menu) */
 EXPORT void tray_update(void* handle);
 

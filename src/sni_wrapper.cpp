@@ -20,56 +20,41 @@
 #include <QMutex>
 #include <unistd.h>
 #include <atomic>
+#include <cstdio>
+#include <cstdarg>
 
 static std::atomic<bool> sni_running{true};
-static bool debug = false; // Set to false to reduce debug output
+static bool debug_mode = false;
 static int trayCount = 0;
 
 // -----------------------------------------------------------------------------
-// Custom message handler to filter warnings
+// Fonction pour activer/désactiver le mode debug
+// -----------------------------------------------------------------------------
+extern "C" void sni_set_debug_mode(int enabled) {
+    debug_mode = enabled != 0;
+}
+
+// -----------------------------------------------------------------------------
+// Logger centralisé
+// -----------------------------------------------------------------------------
+static void sni_log(const char* format, ...) {
+    if (!debug_mode) return;
+
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fprintf(stderr, "\n");
+}
+
+// -----------------------------------------------------------------------------
+// Message handler minimal pour Qt
 // -----------------------------------------------------------------------------
 void customMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
-    // Filter out known harmless warnings
-    if (msg.contains("QObject::killTimer: Timers cannot be stopped from another thread") ||
-        msg.contains("QObject::~QObject: Timers cannot be stopped from another thread") ||
-        msg.contains("g_main_context_pop_thread_default") ||
-        msg.contains("QtDBus: cannot relay signals") ||
-        msg.contains("QApplication was not created in the main() thread") ||
-        msg.contains("QWidget: Cannot create a QWidget without QApplication") ||
-        msg.contains("QSocketNotifier: Can only be used with threads started with QThread") ||
-        msg.contains("QObject::startTimer: Timers can only be used with threads started with QThread") ||
-        msg.contains("QMetaObject::invokeMethod: Dead lock detected") ||
-        msg.contains("QObject::connect: Cannot queue arguments") ||
-        msg.contains("QSettings::value: Empty key passed")||
-        msg.contains("Cannot create children for a parent that is in a different thread") ||
-        msg.contains("Cannot filter events for objects in a different thread")) {
-        return;
-    }
+    if (!debug_mode) return;
 
     const QByteArray localMsg = msg.toLocal8Bit();
-    const char *file = context.file ? context.file : "unknown";
-    const char *function = context.function ? context.function : "unknown";
-
-    switch (type) {
-        case QtDebugMsg:
-            if (debug) fprintf(stderr, "Debug: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-            break;
-        case QtInfoMsg:
-            fprintf(stderr, "Info: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-            break;
-        case QtWarningMsg:
-            fprintf(stderr, "Warning: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-            break;
-        case QtCriticalMsg:
-            fprintf(stderr, "Critical: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-            break;
-        case QtFatalMsg:
-            fprintf(stderr, "Fatal: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-            if (!msg.contains("QWidget: Cannot create a QWidget without QApplication")) {
-                abort();
-            }
-            break;
-    }
+    fprintf(stderr, "%s\n", localMsg.constData());
 }
 
 // -----------------------------------------------------------------------------
@@ -96,7 +81,6 @@ SNIWrapperManager *SNIWrapperManager::instance() {
     if (!s_instance) {
         QMutexLocker locker(&mutex);
         if (!s_instance) {
-            // Use QtThreadManager to create SNIWrapperManager in the Qt thread
             QtThreadManager::instance()->runBlocking([] {
                 s_instance = new SNIWrapperManager();
             });
@@ -119,11 +103,21 @@ SNIWrapperManager::~SNIWrapperManager() {
 }
 
 SNIWrapperManager::SNIWrapperManager() : QObject(), app(qApp) {
-    qInstallMessageHandler(customMessageHandler);
+    // Si pas en mode debug, supprimer tous les outputs
+    if (!debug_mode) {
+        // Rediriger tous les outputs Qt vers le néant
+        qInstallMessageHandler([](QtMsgType, const QMessageLogContext&, const QString&) {});
 
-    // Suppress some debug messages
-    setenv("G_MESSAGES_DEBUG", "", 1);
-    setenv("G_DEBUG", "", 1);
+        // Optionnel : rediriger stderr vers /dev/null pour capturer tout le reste
+        FILE* null_file = freopen("/dev/null", "w", stderr);
+        if (!null_file) {
+            // Si la redirection échoue, on continue quand même
+            // (ça ne devrait pas arriver sous Linux)
+        }
+    } else {
+        // En mode debug, installer un handler simple
+        qInstallMessageHandler(customMessageHandler);
+    }
 
     // Ensure DBus session bus is initialized in this thread
     QDBusConnection::sessionBus();
@@ -153,25 +147,27 @@ void SNIWrapperManager::processEvents() {
 // C API Implementation
 // -----------------------------------------------------------------------------
 
-// sni_wrapper.cpp
 int init_tray_system(void) {
-    static bool handlerInstalled = false;
-    if (!handlerInstalled) {
-        handlerInstalled = true;
-        qInstallMessageHandler(customMessageHandler); // ← installé avant tout
-    }
+    // Définir les variables d'environnement AVANT toute création d'objet Qt
+    static std::once_flag env_flag;
+    std::call_once(env_flag, []() {
+        if (!debug_mode) {
+            setenv("QT_LOGGING_RULES", "*=false", 1);
+            setenv("QT_FATAL_WARNINGS", "0", 1);
+        }
+    });
 
     try {
         SNIWrapperManager::instance();
+        sni_log("Tray system initialized successfully");
         return 0;
     } catch (const std::exception &e) {
-        fprintf(stderr, "Failed to initialize tray system: %s\n", e.what());
+        sni_log("Failed to initialize tray system: %s", e.what());
         return -1;
     }
 }
-
-
 void shutdown_tray_system(void) {
+    sni_log("Shutting down tray system");
     SNIWrapperManager::shutdown();
     QtThreadManager::shutdown();
 }
@@ -187,6 +183,7 @@ void *create_tray(const char *id) {
         result = mgr->createSNI(id);
     }, safeConn(mgr));
 
+    sni_log("Created tray with id: %s", id);
     return result;
 }
 
@@ -201,8 +198,9 @@ void destroy_handle(void *handle) {
     }, safeConn(mgr));
 
     trayCount--;
+    sni_log("Destroyed tray handle, remaining: %d", trayCount);
+
     if (trayCount <= 0) {
-        // Delay shutdown to ensure all cleanup is done
         QTimer::singleShot(100, []() {
             shutdown_tray_system();
         });
@@ -220,6 +218,8 @@ void set_title(void *handle, const char *title) {
     QMetaObject::invokeMethod(sni, [sni, qtitle]() {
         sni->setTitle(qtitle);
     }, safeConn(sni));
+
+    sni_log("Set title: %s", title);
 }
 
 void set_status(void *handle, const char *status) {
@@ -231,6 +231,8 @@ void set_status(void *handle, const char *status) {
     QMetaObject::invokeMethod(sni, [sni, qstatus]() {
         sni->setStatus(qstatus);
     }, safeConn(sni));
+
+    sni_log("Set status: %s", status);
 }
 
 void set_icon_by_name(void *handle, const char *name) {
@@ -242,6 +244,8 @@ void set_icon_by_name(void *handle, const char *name) {
     QMetaObject::invokeMethod(sni, [sni, qname]() {
         sni->setIconByName(qname);
     }, safeConn(sni));
+
+    sni_log("Set icon by name: %s", name);
 }
 
 void set_icon_by_path(void *handle, const char *path) {
@@ -251,14 +255,14 @@ void set_icon_by_path(void *handle, const char *path) {
     QString qpath = QString::fromUtf8(path);
 
     QMetaObject::invokeMethod(sni, [sni, qpath]() {
-        // Force icon refresh by clearing cache first
         sni->setIconByName(QString());
         sni->setIconByPixmap(QIcon(qpath));
     }, safeConn(sni));
+
+    sni_log("Set icon by path: %s", path);
 }
 
 void update_icon_by_path(void *handle, const char *path) {
-    // Force complete icon update
     set_icon_by_path(handle, path);
 }
 
@@ -271,6 +275,8 @@ void set_tooltip_title(void *handle, const char *title) {
     QMetaObject::invokeMethod(sni, [sni, qtitle]() {
         sni->setToolTipTitle(qtitle);
     }, safeConn(sni));
+
+    sni_log("Set tooltip title: %s", title);
 }
 
 void set_tooltip_subtitle(void *handle, const char *subTitle) {
@@ -282,6 +288,8 @@ void set_tooltip_subtitle(void *handle, const char *subTitle) {
     QMetaObject::invokeMethod(sni, [sni, qsubtitle]() {
         sni->setToolTipSubTitle(qsubtitle);
     }, safeConn(sni));
+
+    sni_log("Set tooltip subtitle: %s", subTitle);
 }
 
 // ------------------- Menu creation & management -------------------
@@ -295,6 +303,7 @@ void *create_menu(void) {
         result->setObjectName("SNIContextMenu");
     }, safeConn(mgr));
 
+    sni_log("Created menu");
     return result;
 }
 
@@ -305,18 +314,13 @@ void destroy_menu(void *menu_handle) {
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [menu]() {
-        // Disconnect all signals first
         menu->disconnect();
-
-        // Clear all actions
         menu->clear();
-
-        // Mark for deletion (will be deleted when event loop processes it)
         menu->deleteLater();
-
-        // Process events to ensure deleteLater is handled
         qApp->processEvents(QEventLoop::ExcludeUserInputEvents);
     }, safeConn(mgr));
+
+    sni_log("Destroyed menu");
 }
 
 void set_context_menu(void *handle, void *menu_handle) {
@@ -326,13 +330,9 @@ void set_context_menu(void *handle, void *menu_handle) {
     QMenu *menu = menu_handle ? static_cast<QMenu *>(menu_handle) : nullptr;
 
     QMetaObject::invokeMethod(sni, [sni, menu]() {
-        // Set the new context menu (StatusNotifierItem handles cleanup internally)
         sni->setContextMenu(menu);
-
-        // Force processing of events to ensure DBus changes are applied
         qApp->processEvents(QEventLoop::ExcludeUserInputEvents);
 
-        // Additional delay when unsetting menu to ensure cleanup completes
         if (!menu) {
             QTimer timer;
             timer.setSingleShot(true);
@@ -342,6 +342,8 @@ void set_context_menu(void *handle, void *menu_handle) {
             loop.exec();
         }
     }, safeConn(sni));
+
+    sni_log("Set context menu");
 }
 
 void *add_menu_action(void *menu_handle, const char *text, ActionCallback cb, void *data) {
@@ -362,6 +364,7 @@ void *add_menu_action(void *menu_handle, const char *text, ActionCallback cb, vo
         result = action;
     }, safeConn(mgr));
 
+    sni_log("Added menu action: %s", text);
     return result;
 }
 
@@ -384,6 +387,7 @@ void *add_disabled_menu_action(void *menu_handle, const char *text, ActionCallba
         result = action;
     }, safeConn(mgr));
 
+    sni_log("Added disabled menu action: %s", text);
     return result;
 }
 
@@ -404,6 +408,8 @@ void add_checkable_menu_action(void *menu_handle, const char *text, int checked,
             });
         }
     }, safeConn(mgr));
+
+    sni_log("Added checkable menu action: %s (checked: %d)", text, checked);
 }
 
 void add_menu_separator(void *menu_handle) {
@@ -415,6 +421,8 @@ void add_menu_separator(void *menu_handle) {
     QMetaObject::invokeMethod(mgr, [menu]() {
         menu->addSeparator();
     }, safeConn(mgr));
+
+    sni_log("Added menu separator");
 }
 
 void *create_submenu(void *menu_handle, const char *text) {
@@ -430,6 +438,7 @@ void *create_submenu(void *menu_handle, const char *text) {
         subMenu->setObjectName("SNISubMenu");
     }, safeConn(mgr));
 
+    sni_log("Created submenu: %s", text);
     return subMenu;
 }
 
@@ -443,6 +452,8 @@ void set_menu_item_text(void *menu_item_handle, const char *text) {
     QMetaObject::invokeMethod(mgr, [action, qtext]() {
         action->setText(qtext);
     }, safeConn(mgr));
+
+    sni_log("Set menu item text: %s", text);
 }
 
 void set_menu_item_enabled(void *menu_item_handle, int enabled) {
@@ -454,6 +465,24 @@ void set_menu_item_enabled(void *menu_item_handle, int enabled) {
     QMetaObject::invokeMethod(mgr, [action, enabled]() {
         action->setEnabled(enabled != 0);
     }, safeConn(mgr));
+
+    sni_log("Set menu item enabled: %d", enabled);
+}
+
+int set_menu_item_checked(void *menu_item_handle, int checked) {
+    if (!menu_item_handle) return -1;
+
+    QAction *action = static_cast<QAction *>(menu_item_handle);
+    auto mgr = SNIWrapperManager::instance();
+
+    QMetaObject::invokeMethod(mgr, [action, checked]() {
+        if (action->isCheckable()) {
+            action->setChecked(checked != 0);
+        }
+    }, safeConn(mgr));
+
+    sni_log("Set menu item checked: %d", checked);
+    return 0;
 }
 
 void remove_menu_item(void *menu_handle, void *menu_item_handle) {
@@ -467,6 +496,8 @@ void remove_menu_item(void *menu_handle, void *menu_item_handle) {
         menu->removeAction(action);
         action->deleteLater();
     }, safeConn(mgr));
+
+    sni_log("Removed menu item");
 }
 
 // ------------------- Tray update function -------------------
@@ -478,33 +509,29 @@ void tray_update(void *handle) {
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [sni]() {
-        // Store current values
         QString currentIcon = sni->iconName();
         QString currentTitle = sni->title();
         QString currentTooltipTitle = sni->toolTipTitle();
         QString currentStatus = sni->status();
 
-        // Force re-emission by toggling values
         if (!currentIcon.isEmpty()) {
             sni->setIconByName("");
             sni->setIconByName(currentIcon);
         }
 
-        // Force title update
         sni->setTitle(currentTitle + " ");
         sni->setTitle(currentTitle);
 
-        // Force tooltip update
         sni->setToolTipTitle(currentTooltipTitle + " ");
         sni->setToolTipTitle(currentTooltipTitle);
 
-        // Force status update
         sni->setStatus("NeedsAttention");
         sni->setStatus(currentStatus);
 
-        // Process events to ensure all changes are applied
         qApp->processEvents(QEventLoop::ExcludeUserInputEvents);
     }, safeConn(mgr));
+
+    sni_log("Updated tray");
 }
 
 // ------------------- Tray event callbacks -------------------
@@ -515,7 +542,6 @@ void set_activate_callback(void *handle, ActivateCallback cb, void *data) {
     StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
 
     QMetaObject::invokeMethod(sni, [sni, cb, data]() {
-        // Disconnect previous connections
         QObject::disconnect(sni, &StatusNotifierItem::activateRequested, nullptr, nullptr);
 
         if (cb) {
@@ -526,6 +552,8 @@ void set_activate_callback(void *handle, ActivateCallback cb, void *data) {
                              Qt::DirectConnection);
         }
     }, safeConn(sni));
+
+    sni_log("Set activate callback");
 }
 
 void set_secondary_activate_callback(void *handle, SecondaryActivateCallback cb, void *data) {
@@ -534,7 +562,6 @@ void set_secondary_activate_callback(void *handle, SecondaryActivateCallback cb,
     StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
 
     QMetaObject::invokeMethod(sni, [sni, cb, data]() {
-        // Disconnect previous connections
         QObject::disconnect(sni, &StatusNotifierItem::secondaryActivateRequested, nullptr, nullptr);
 
         if (cb) {
@@ -545,6 +572,8 @@ void set_secondary_activate_callback(void *handle, SecondaryActivateCallback cb,
                              Qt::DirectConnection);
         }
     }, safeConn(sni));
+
+    sni_log("Set secondary activate callback");
 }
 
 void set_scroll_callback(void *handle, ScrollCallback cb, void *data) {
@@ -553,7 +582,6 @@ void set_scroll_callback(void *handle, ScrollCallback cb, void *data) {
     StatusNotifierItem *sni = static_cast<StatusNotifierItem *>(handle);
 
     QMetaObject::invokeMethod(sni, [sni, cb, data]() {
-        // Disconnect previous connections
         QObject::disconnect(sni, &StatusNotifierItem::scrollRequested, nullptr, nullptr);
 
         if (cb) {
@@ -564,6 +592,8 @@ void set_scroll_callback(void *handle, ScrollCallback cb, void *data) {
                              Qt::DirectConnection);
         }
     }, safeConn(sni));
+
+    sni_log("Set scroll callback");
 }
 
 // ------------------- Notifications -------------------
@@ -579,6 +609,8 @@ void show_notification(void *handle, const char *title, const char *msg, const c
     QMetaObject::invokeMethod(sni, [sni, qtitle, qmsg, qiconName, secs]() {
         sni->showMessage(qtitle, qmsg, qiconName, secs * 1000);
     }, safeConn(sni));
+
+    sni_log("Showed notification: %s", title ? title : "");
 }
 
 // ------------------- Event loop management -------------------
@@ -589,17 +621,18 @@ int sni_exec(void) {
             sni_process_events();
             usleep(100000); // 100ms
         } catch (const std::exception &e) {
-            fprintf(stderr, "Exception in sni_exec: %s\n", e.what());
+            sni_log("Exception in sni_exec: %s", e.what());
         } catch (...) {
-            fprintf(stderr, "Unknown exception in sni_exec\n");
+            sni_log("Unknown exception in sni_exec");
         }
     }
-    sni_running.store(true); // Reset for potential reuse
+    sni_running.store(true);
     return 0;
 }
 
 void sni_stop_exec(void) {
     sni_running.store(false);
+    sni_log("Stopped event loop");
 }
 
 void sni_process_events(void) {
@@ -618,13 +651,12 @@ void clear_menu(void *menu_handle) {
     auto mgr = SNIWrapperManager::instance();
 
     QMetaObject::invokeMethod(mgr, [menu]() {
-        // Disconnect all signals from actions
         for (QAction *action: menu->actions()) {
             action->disconnect();
         }
-        // Clear all actions
         menu->clear();
-        // Process events to ensure cleanup
         qApp->processEvents(QEventLoop::ExcludeUserInputEvents);
     }, safeConn(mgr));
+
+    sni_log("Cleared menu");
 }
