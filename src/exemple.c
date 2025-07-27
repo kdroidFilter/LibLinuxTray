@@ -78,6 +78,11 @@ void on_toggle_item(void* data) {
     printf("Toggle item clicked!\n");
 }
 
+void on_icon_item(void *data)
+{
+    printf("Icon item clicked!\n");
+}
+
 int main() {
     init_tray_system();
 
@@ -86,7 +91,7 @@ int main() {
         fprintf(stderr, "Failed to create tray\n");
         return 1;
     }
-    global_tray = tray;  // Stocke le tray globalement pour l'accès dans les callbacks
+    global_tray = tray;  // Store tray globally for access in callbacks
 
     set_title(tray, "My Tray Example");
     set_status(tray, "Active");
@@ -106,18 +111,18 @@ int main() {
         shutdown_tray_system();
         return 1;
     }
-    global_menu = menu;  // Stocke le menu globalement
+    global_menu = menu;  // Store menu globally
 
-    // Ajout d'une action standard
+    // Add a standard action
     add_menu_action(menu, "Action 1", on_action1, NULL);
 
-    // Ajout d'une action cochable
+    // Add a checkable action
     add_checkable_menu_action(menu, "Toggle Me", 1, on_checkable_action, NULL);
 
-    // Ajout d'un séparateur
+    // Add a separator
     add_menu_separator(menu);
 
-    // Création d'un sous-menu
+    // Create a submenu
     void* submenu = create_submenu(menu, "Submenu");
     if (!submenu) {
         fprintf(stderr, "Failed to create submenu\n");
@@ -127,12 +132,12 @@ int main() {
         return 1;
     }
 
-    // Ajout d'actions dans le sous-menu
+    // Add actions to the submenu
     add_menu_action(submenu, "Submenu Action", on_submenu_action, NULL);
     add_menu_separator(submenu);
     add_menu_action(submenu, "Action 2", on_action2, NULL);
 
-    // Ajout d'un nouvel item pour changer l'icône dynamiquement (dans le menu principal)
+    // Add a new item to dynamically change the icon (in the main menu)
     add_menu_separator(menu);
     add_menu_action(menu, "Change Icon", on_change_icon, NULL);
 
@@ -171,6 +176,18 @@ int main() {
         shutdown_tray_system();
         return 1;
     }
+
+    /* Création de l’item */
+    void *icon_item =
+        add_menu_action(menu,
+                        "Item with icon",
+                        on_icon_item,
+                        NULL);
+
+    /* Icon assignment
+        – theme name: "document-open"
+        – or absolute path: "/usr/share/pixmaps/firefox.png" */
+    set_menu_item_icon(icon_item, "/usr/share/icons/hicolor/48x48/apps/firefox.png");
 
     // New item that can be enabled/disabled (initially enabled)
     add_menu_separator(menu);
@@ -221,8 +238,8 @@ int main() {
     printf("Tray is running. Press Ctrl+C to exit.\n");
     sni_exec();  // Blocking, handles events correctly
 
-    destroy_handle(toggle_submenu); // Destruction du sous-menu toggle
-    destroy_handle(submenu); // Destruction du sous-menu
+    destroy_handle(toggle_submenu); // Destroy toggle submenu
+    destroy_handle(submenu); // Destroy submenu
     destroy_handle(menu);
     destroy_handle(tray);
     shutdown_tray_system();

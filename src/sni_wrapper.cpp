@@ -451,6 +451,32 @@ void set_menu_item_text(void *menu_item_handle, const char *text) {
     sni_log("Set menu item text: %s", text);
 }
 
+void set_menu_item_icon(void *menu_item_handle,
+                        const char *icon_path_or_name)
+{
+    if (!menu_item_handle || !icon_path_or_name)
+        return;
+
+    QAction *action = static_cast<QAction *>(menu_item_handle);
+    QString qstr = QString::fromUtf8(icon_path_or_name);
+    auto mgr = SNIWrapperManager::instance();      // même schéma que les autres setters
+
+    QMetaObject::invokeMethod(mgr, [action, qstr]()
+    {
+        /* 1) Essaye d’abord le thème d’icônes */
+        QIcon ico = QIcon::fromTheme(qstr);
+
+        /* 2) Puis, si échec, interprète la chaîne comme chemin absolu */
+        if (ico.isNull())
+            ico = QIcon(qstr);
+
+        action->setIcon(ico);
+    }, safeConn(mgr));
+
+    sni_log("Set menu item icon: %s", icon_path_or_name);
+}
+
+
 void set_menu_item_enabled(void *menu_item_handle, int enabled) {
     if (!menu_item_handle) return;
 

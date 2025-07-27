@@ -73,8 +73,9 @@ EXPORT void* create_submenu(void* menu_handle, const char* text);
 EXPORT void  set_menu_item_text(void* menu_item_handle, const char* text);
 EXPORT void  set_menu_item_enabled(void* menu_item_handle, int enabled);
 EXPORT void  remove_menu_item(void* menu_handle, void* menu_item_handle);
+EXPORT void set_menu_item_icon(void *menu_item_handle,const char *icon_path_or_name);
 
-/* Tray event callbacks */
+    /* Tray event callbacks */
 EXPORT void set_activate_callback(void* handle, ActivateCallback cb, void* data);
 EXPORT void set_secondary_activate_callback(void* handle, SecondaryActivateCallback cb, void* data);
 EXPORT void set_scroll_callback(void* handle, ScrollCallback cb, void* data);
