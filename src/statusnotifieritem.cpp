@@ -144,8 +144,8 @@ void StatusNotifierItem::setIconByName(const QString &name)
         return;
 
     mIconName = name;
-    mIcon.clear();  // Ajout pour effacer le pixmap précédent
-    mIconCacheKey = 0;  // Réinitialiser la clé de cache
+    mIcon.clear();  // Clear previous pixmap
+    mIconCacheKey = 0;  // Reset cache key
     Q_EMIT mAdaptor->NewIcon();
 }
 
@@ -170,8 +170,8 @@ void StatusNotifierItem::setOverlayIconByName(const QString &name)
         return;
 
     mOverlayIconName = name;
-    mOverlayIcon.clear();  // Ajout
-    mOverlayIconCacheKey = 0;  // Ajout
+    mOverlayIcon.clear();  // Clear previous overlay icon
+    mOverlayIconCacheKey = 0;  // Reset cache key
     Q_EMIT mAdaptor->NewOverlayIcon();
 }
 
@@ -192,8 +192,8 @@ void StatusNotifierItem::setAttentionIconByName(const QString &name)
         return;
 
     mAttentionIconName = name;
-    mAttentionIcon.clear();  // Ajout
-    mAttentionIconCacheKey = 0;  // Ajout
+    mAttentionIcon.clear();  // Clear previous attention icon
+    mAttentionIconCacheKey = 0;  // Reset cache key
     Q_EMIT mAdaptor->NewAttentionIcon();
 }
 
@@ -232,8 +232,8 @@ void StatusNotifierItem::setToolTipIconByName(const QString &name)
         return;
 
     mTooltipIconName = name;
-    mTooltipIcon.clear();  // Ajout
-    mTooltipIconCacheKey = 0;  // Ajout
+    mTooltipIcon.clear();  // Clear previous tooltip icon
+    mTooltipIconCacheKey = 0;  // Reset cache key
     Q_EMIT mAdaptor->NewToolTip();
 }
 
@@ -323,14 +323,14 @@ IconPixmapList StatusNotifierItem::iconToPixmapList(const QIcon &icon)
     IconPixmapList pixmapList;
 
     /* ---------------------------------------------------------------
-     * 1. Déterminer les tailles à générer
+     * 1. Determine sizes to generate
      * ------------------------------------------------------------- */
     QList<QSize> sizes = icon.availableSizes();
     if (sizes.isEmpty())
         sizes = { {16,16}, {22,22}, {24,24}, {32,32}, {48,48} };
 
     /* ---------------------------------------------------------------
-     * 2. Construire les pixmaps
+     * 2. Build the pixmaps
      * ------------------------------------------------------------- */
     for (const QSize &sz : std::as_const(sizes)) {
         QPixmap pm = icon.pixmap(sz);
@@ -356,7 +356,7 @@ IconPixmapList StatusNotifierItem::iconToPixmapList(const QIcon &icon)
     }
 
     /* ---------------------------------------------------------------
-     * 3. Fallback absolu : toujours fournir au moins un 32 px
+     * 3. Absolute fallback: always provide at least one 32px icon
      * ------------------------------------------------------------- */
     if (pixmapList.isEmpty()) {
         QImage img = icon.pixmap(32,32).toImage();
@@ -374,4 +374,11 @@ IconPixmapList StatusNotifierItem::iconToPixmapList(const QIcon &icon)
 void StatusNotifierItem::unregister() {
     mSessionBus.unregisterObject(QLatin1String("/StatusNotifierItem"));
     QDBusConnection::disconnectFromBus(mService);
+}
+
+void StatusNotifierItem::forceUpdate()
+{
+    Q_EMIT mAdaptor->NewIcon();
+    Q_EMIT mAdaptor->NewToolTip();
+    Q_EMIT mAdaptor->NewStatus(mStatus);
 }

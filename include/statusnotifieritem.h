@@ -146,6 +146,9 @@ public Q_SLOTS:
 
     void showMessage(const QString &title, const QString &msg, const QString &iconName, int secs);
     void unregister();
+    void forceUpdate();
+    QMenu* contextMenu() const { return mMenu; }
+
 private:
     void registerToHost();
     IconPixmapList iconToPixmapList(const QIcon &icon);

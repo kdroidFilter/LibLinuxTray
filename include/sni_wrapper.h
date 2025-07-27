@@ -8,6 +8,33 @@
 #endif
 
 #ifdef __cplusplus
+#include <QObject>
+#include <QApplication>
+
+// Forward declaration
+class StatusNotifierItem;
+
+class SNIWrapperManager : public QObject {
+    Q_OBJECT
+public:
+    static SNIWrapperManager* instance();
+    static void shutdown();
+    static SNIWrapperManager* s_instance;
+
+    QApplication* app;
+
+    ~SNIWrapperManager() override;
+    void startEventLoop();
+    StatusNotifierItem* createSNI(const char* id);
+    void destroySNI(StatusNotifierItem* sni);
+    void processEvents();
+
+private:
+    SNIWrapperManager();
+};
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -58,6 +85,16 @@ EXPORT void show_notification(void* handle, const char* title, const char* msg, 
 /* Event loop management */
 EXPORT int  sni_exec(void);
 EXPORT void sni_process_events(void);
+EXPORT void sni_stop_exec(void);
+
+/* Manage debug mode  */
+EXPORT void sni_set_debug_mode(int enabled);
+
+/* Force update of the tray (icon, tooltip, menu) */
+EXPORT void tray_update(void* handle);
+
+/* Clear all items from a menu */
+EXPORT void clear_menu(void* menu_handle);
 
 #ifdef __cplusplus
 }
