@@ -28,14 +28,14 @@ static bool debug_mode = false;
 static int trayCount = 0;
 
 // -----------------------------------------------------------------------------
-// Fonction pour activer/désactiver le mode debug
+// Function to enable/disable debug mode
 // -----------------------------------------------------------------------------
 extern "C" void sni_set_debug_mode(int enabled) {
     debug_mode = enabled != 0;
 }
 
 // -----------------------------------------------------------------------------
-// Logger centralisé
+// Centralized logger
 // -----------------------------------------------------------------------------
 static void sni_log(const char* format, ...) {
     if (!debug_mode) return;
@@ -48,7 +48,7 @@ static void sni_log(const char* format, ...) {
 }
 
 // -----------------------------------------------------------------------------
-// Message handler minimal pour Qt
+// Minimal message handler for Qt
 // -----------------------------------------------------------------------------
 void customMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
     if (!debug_mode) return;
@@ -103,19 +103,19 @@ SNIWrapperManager::~SNIWrapperManager() {
 }
 
 SNIWrapperManager::SNIWrapperManager() : QObject(), app(qApp) {
-    // Si pas en mode debug, supprimer tous les outputs
+    // If not in debug mode, suppress all output
     if (!debug_mode) {
-        // Rediriger tous les outputs Qt vers le néant
+        // Redirect all Qt outputs to nowhere
         qInstallMessageHandler([](QtMsgType, const QMessageLogContext&, const QString&) {});
 
-        // Optionnel : rediriger stderr vers /dev/null pour capturer tout le reste
+        // Optional: redirect stderr to /dev/null to capture everything else
         FILE* null_file = freopen("/dev/null", "w", stderr);
         if (!null_file) {
-            // Si la redirection échoue, on continue quand même
-            // (ça ne devrait pas arriver sous Linux)
+            // If redirection fails, continue anyway
+            // (this should not happen on Linux)
         }
     } else {
-        // En mode debug, installer un handler simple
+        // In debug mode, install a simple handler
         qInstallMessageHandler(customMessageHandler);
     }
 
@@ -148,7 +148,7 @@ void SNIWrapperManager::processEvents() {
 // -----------------------------------------------------------------------------
 
 int init_tray_system(void) {
-    // Définir les variables d'environnement AVANT toute création d'objet Qt
+    // Set environment variables BEFORE any Qt object creation
     static std::once_flag env_flag;
     std::call_once(env_flag, []() {
         if (!debug_mode) {

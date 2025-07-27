@@ -1,17 +1,17 @@
-// Mise à jour de src/exemple.c pour utiliser sni_exec() et ajouter un item qui change de nom
+// Update of src/exemple.c to use sni_exec() and add an item that changes name
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>  // Added for sleep function
-#include "../include/sni_wrapper.h"  // Inclusion avec le chemin relatif vers le dossier include
+#include "../include/sni_wrapper.h"  // Include with relative path to the include folder
 
-void* global_tray = NULL;  // Variable globale pour accéder au tray depuis les callbacks
-void* global_menu = NULL;  // Nouvelle globale pour accéder au menu depuis les callbacks
-void* change_name_item = NULL;  // Globale pour l'item qui change de nom
-void* add_item_button = NULL;   // Globale pour l'item qui ajoute un item
-void* disappear_item = NULL;    // Globale pour l'item qui disparaît
-void* toggle_item = NULL;       // Globale pour l'item qui peut être activé/désactivé
+void* global_tray = NULL;  // Global variable to access tray from callbacks
+void* global_menu = NULL;  // New global to access menu from callbacks
+void* change_name_item = NULL;  // Global for the item that changes name
+void* add_item_button = NULL;   // Global for the item that adds an item
+void* disappear_item = NULL;    // Global for the item that disappears
+void* toggle_item = NULL;       // Global for the item that can be enabled/disabled
 
 void on_activate(int x, int y, void* data) {
     printf("Tray activated at (%d, %d)\n", x, y);
@@ -43,25 +43,25 @@ void on_submenu_action(void* data) {
 
 void on_change_icon(void* data) {
     printf("Changing icon dynamically!\n");
-    // Chemin vers une nouvelle icône (remplacez par un chemin valide sur votre système)
-    const char* new_icon_path = "/usr/share/icons/hicolor/48x48/apps/firefox.png";  // Exemple : icône de Firefox
+    // Path to a new icon (replace with a valid path on your system)
+    const char* new_icon_path = "/usr/share/icons/hicolor/48x48/apps/firefox.png";  // Example: Firefox icon
     update_icon_by_path(global_tray, new_icon_path);
 }
 
 void on_change_name(void* data) {
     printf("Changing item name!\n");
-    set_menu_item_text(change_name_item, "Nouveau Nom");
+    set_menu_item_text(change_name_item, "New Name");
 }
 
 void on_add_item(void* data) {
     printf("Adding new item dynamically!\n");
-    add_menu_action(global_menu, "Nouvel Item Ajouté", NULL, NULL);
+    add_menu_action(global_menu, "New Added Item", NULL, NULL);
 }
 
 void on_disappear(void* data) {
     printf("Making item disappear!\n");
     remove_menu_item(global_menu, disappear_item);
-    disappear_item = NULL;  // Réinitialise le pointeur après suppression
+    disappear_item = NULL;  // Reset pointer after deletion
 }
 
 void on_enable_item(void* data) {
@@ -90,7 +90,7 @@ int main() {
 
     set_title(tray, "My Tray Example");
     set_status(tray, "Active");
-    // Utilisation d'une icône à partir d'un chemin de fichier
+    // Using an icon from a file path
     set_icon_by_path(tray, "/usr/share/icons/hicolor/48x48/apps/openjdk-17.png");
     set_tooltip_title(tray, "My App");
     set_tooltip_subtitle(tray, "Example Tooltip");
@@ -136,9 +136,9 @@ int main() {
     add_menu_separator(menu);
     add_menu_action(menu, "Change Icon", on_change_icon, NULL);
 
-    // Nouvel item qui change de nom quand on clique dessus
+    // New item that changes name when clicked
     add_menu_separator(menu);
-    change_name_item = add_menu_action(menu, "Clique moi pour changer", on_change_name, NULL);
+    change_name_item = add_menu_action(menu, "Click me to change", on_change_name, NULL);
     if (!change_name_item) {
         fprintf(stderr, "Failed to create change name item\n");
         destroy_handle(submenu);
@@ -148,9 +148,9 @@ int main() {
         return 1;
     }
 
-    // Nouvel item qui ajoute un item quand on clique dessus
+    // New item that adds an item when clicked
     add_menu_separator(menu);
-    add_item_button = add_menu_action(menu, "Ajoute un item", on_add_item, NULL);
+    add_item_button = add_menu_action(menu, "Add an item", on_add_item, NULL);
     if (!add_item_button) {
         fprintf(stderr, "Failed to create add item button\n");
         destroy_handle(submenu);
@@ -160,9 +160,9 @@ int main() {
         return 1;
     }
 
-    // Nouvel item qui disparaît quand on clique dessus
+    // New item that disappears when clicked
     add_menu_separator(menu);
-    disappear_item = add_menu_action(menu, "Clique moi pour disparaître", on_disappear, NULL);
+    disappear_item = add_menu_action(menu, "Click me to disappear", on_disappear, NULL);
     if (!disappear_item) {
         fprintf(stderr, "Failed to create disappear item\n");
         destroy_handle(submenu);
@@ -172,9 +172,9 @@ int main() {
         return 1;
     }
 
-    // Nouvel item qui peut être activé/désactivé (initialement activé)
+    // New item that can be enabled/disabled (initially enabled)
     add_menu_separator(menu);
-    toggle_item = add_menu_action(menu, "Item à toggler", on_toggle_item, NULL);
+    toggle_item = add_menu_action(menu, "Toggle Item", on_toggle_item, NULL);
     if (!toggle_item) {
         fprintf(stderr, "Failed to create toggle item\n");
         destroy_handle(submenu);
@@ -184,7 +184,7 @@ int main() {
         return 1;
     }
 
-    // Sous-menu pour activer/désactiver l'item
+    // Submenu to enable/disable the item
     add_menu_separator(menu);
     void* toggle_submenu = create_submenu(menu, "Toggle Item");
     if (!toggle_submenu) {
@@ -196,10 +196,10 @@ int main() {
         return 1;
     }
 
-    add_menu_action(toggle_submenu, "Activer", on_enable_item, NULL);
-    add_menu_action(toggle_submenu, "Désactiver", on_disable_item, NULL);
+    add_menu_action(toggle_submenu, "Enable", on_enable_item, NULL);
+    add_menu_action(toggle_submenu, "Disable", on_disable_item, NULL);
 
-    // Ajout d'un item disabled
+    // Add a disabled item
     add_menu_separator(menu);
     void* disabled_item = add_disabled_menu_action(menu, "Item Disabled", NULL, NULL);
     if (!disabled_item) {
@@ -214,12 +214,12 @@ int main() {
 
     set_context_menu(tray, menu);
 
-    // Afficher une notification
+    // Display a notification
     show_notification(tray, "Hello", "This is a test notification", "dialog-information", 5000);
 
-    // Boucle principale pour gérer les événements : utiliser sni_exec() pour un vrai event loop Qt
+    // Main loop to handle events: use sni_exec() for a real Qt event loop
     printf("Tray is running. Press Ctrl+C to exit.\n");
-    sni_exec();  // Bloquant, gère les events correctement
+    sni_exec();  // Blocking, handles events correctly
 
     destroy_handle(toggle_submenu); // Destruction du sous-menu toggle
     destroy_handle(submenu); // Destruction du sous-menu
