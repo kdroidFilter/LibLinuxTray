@@ -11,7 +11,7 @@
 #include <QObject>
 #include <QApplication>
 
-// Déclaration anticipée
+// Forward declaration
 class StatusNotifierItem;
 
 class SNIWrapperManager : public QObject {

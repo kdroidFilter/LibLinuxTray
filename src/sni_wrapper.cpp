@@ -103,17 +103,12 @@ SNIWrapperManager::~SNIWrapperManager() {
 }
 
 SNIWrapperManager::SNIWrapperManager() : QObject(), app(qApp) {
-    // If not in debug mode, suppress all output
+    // If not in debug mode, suppress only Qt outputs
     if (!debug_mode) {
         // Redirect all Qt outputs to nowhere
         qInstallMessageHandler([](QtMsgType, const QMessageLogContext&, const QString&) {});
 
-        // Optional: redirect stderr to /dev/null to capture everything else
-        FILE* null_file = freopen("/dev/null", "w", stderr);
-        if (!null_file) {
-            // If redirection fails, continue anyway
-            // (this should not happen on Linux)
-        }
+        // DO NOT redirect stderr
     } else {
         // In debug mode, install a simple handler
         qInstallMessageHandler(customMessageHandler);

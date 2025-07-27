@@ -2,7 +2,7 @@
 #include <QMetaObject>
 
 /* ------------------------------------------------------------------ *
- *  Instance unique, recréée si le QThread précédent est terminé       *
+ *  Unique instance, recreated if the previous QThread is terminated   *
  * ------------------------------------------------------------------ */
 static QtThreadManager* g_instance = nullptr;
 
