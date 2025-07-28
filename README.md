@@ -6,8 +6,8 @@ This repository contains a Linux-specific C/C++ backend for displaying a system 
 
 * ✅ Focused only on **Linux** desktop environments using the StatusNotifierItem protocol
 * 🔄 Implements the DBus-based StatusNotifierItem specification for modern Linux desktops
-* 🧩 Provides a C wrapper around the Qt/C++ implementation for easy JNI integration
-* 🔗 JNI-friendly API for seamless integration with Kotlin/Compose
+* 🧩 Provides a C wrapper around the Qt/C++ implementation for easy JNA integration
+* 🔗 JNA-friendly API for seamless integration with Kotlin/Compose
 
 ## ✅ Features
 
@@ -107,9 +107,9 @@ make
 
 Build and run the `tray-demo` or `tray-c-demo` binaries for working demonstrations.
 
-## 📦 JNI Integration
+## 📦 JNA Integration
 
-This backend is compiled and linked with `ComposeNativeTray` and accessed from Kotlin using JNI. The library handles the complexities of the StatusNotifierItem protocol and Qt integration, providing a simple C API that can be called from Java/Kotlin.
+This backend is compiled and linked with `ComposeNativeTray` and accessed from Kotlin using JNA. The library handles the complexities of the StatusNotifierItem protocol and Qt integration, providing a simple C API that can be called from Java/Kotlin.
 
 ## 🙏 Credits
 

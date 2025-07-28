@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(StatusNotifierItemExample LANGUAGES CXX C)  # Ajout de C pour le support C
+project(StatusNotifierItemExample LANGUAGES CXX C)  # Added C for C language support
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,11 +11,11 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)  # Include current directory for generated fil
 # Qt5
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets DBus)
 
-# DBusMenu (pour QMenu via DBus)
+# DBusMenu (for QMenu via DBus)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(DBUSMENU REQUIRED dbusmenu-qt5)
 
-# Génère l’adaptateur D-Bus depuis l’interface XML
+# Generates the D-Bus adapter from the XML interface
 qt5_add_dbus_adaptor(
         statusnotifier_adaptor_src
         ${CMAKE_SOURCE_DIR}/org.kde.StatusNotifierItem.xml
@@ -30,43 +30,43 @@ include_directories(
         ${DBUSMENU_INCLUDE_DIRS}
 )
 
-# Fichiers sources
+# Source files
 set(SOURCES
         src/statusnotifieritem.cpp
         src/dbustypes.cpp
-        src/sni_wrapper.cpp  # Ajout du wrapper
-        src/qtthreadmanager.cpp  # Ajout du thread manager
+        src/sni_wrapper.cpp  # Addition of the wrapper
+        src/qtthreadmanager.cpp  # Addition of the thread manager
         ${statusnotifier_adaptor_src}
 )
 
 set(HEADERS
         include/statusnotifieritem.h
         include/dbustypes.h
-        include/sni_wrapper.h  # Ajout du header pour le wrapper
-        include/qtthreadmanager.h  # Ajout du header pour le thread manager
+        include/sni_wrapper.h  # Addition of the header for the wrapper
+        include/qtthreadmanager.h  # Addition of the header for the thread manager
 )
 
-# S'assurer que le fichier d'adaptateur généré est reconnu
+# Ensure that the generated adapter file is recognized
 set_source_files_properties(${statusnotifier_adaptor_src} PROPERTIES SKIP_AUTOMOC TRUE)
 
-# Librairie partagée pour JNA
+# Shared library for JNA
 add_library(tray SHARED ${SOURCES} ${HEADERS})
 target_link_libraries(tray
         Qt5::Core Qt5::Gui Qt5::Widgets Qt5::DBus
         ${DBUSMENU_LIBRARIES}
 )
 
-# Librairie statique pour la démo
+# Static library for the demo
 add_library(statusnotifier STATIC ${SOURCES} ${HEADERS})
 target_link_libraries(statusnotifier
         Qt5::Core Qt5::Gui Qt5::Widgets Qt5::DBus
         ${DBUSMENU_LIBRARIES}
 )
 
-# Démo simple en C++
+# Simple demo in C++
 add_executable(tray-demo src/main.cpp)
 target_link_libraries(tray-demo statusnotifier)
 
-# Démo en C utilisant le wrapper
+# Demo in C using the wrapper
 add_executable(tray-c-demo src/exemple.c)
 target_link_libraries(tray-c-demo tray)
