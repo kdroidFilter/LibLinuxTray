@@ -96,6 +96,21 @@ sudo dnf install cmake qt5-qtbase-devel libdbusmenu-qt5-devel
 
 ### Build
 
+#### Using the build script
+
+The simplest way to build the library is to use the provided build script:
+
+```sh
+chmod +x build.sh  # Make the script executable (first time only)
+./build.sh
+```
+
+This will compile the library in MinSizeRel mode and copy it to the appropriate resources directory.
+
+#### Manual build
+
+Alternatively, you can build manually:
+
 ```sh
 mkdir build
 cd build
