@@ -78,6 +78,11 @@ void on_toggle_item(void* data) {
     printf("Toggle item clicked!\n");
 }
 
+void on_icon_item(void *data)
+{
+    printf("Icon item clicked!\n");
+}
+
 int main() {
     init_tray_system();
 
@@ -86,7 +91,7 @@ int main() {
         fprintf(stderr, "Failed to create tray\n");
         return 1;
     }
-    global_tray = tray;  // Store the tray globally for access in callbacks
+    global_tray = tray;  // Store tray globally for access in callbacks
 
     set_title(tray, "My Tray Example");
     set_status(tray, "Active");
@@ -106,7 +111,7 @@ int main() {
         shutdown_tray_system();
         return 1;
     }
-    global_menu = menu;  // Store the menu globally
+    global_menu = menu;  // Store menu globally
 
     // Add a standard action
     add_menu_action(menu, "Action 1", on_action1, NULL);
@@ -117,7 +122,7 @@ int main() {
     // Add a separator
     add_menu_separator(menu);
 
-    // Creation of a submenu
+    // Create a submenu
     void* submenu = create_submenu(menu, "Submenu");
     if (!submenu) {
         fprintf(stderr, "Failed to create submenu\n");
@@ -172,6 +177,18 @@ int main() {
         return 1;
     }
 
+    /* Création de l’item */
+    void *icon_item =
+        add_menu_action(menu,
+                        "Item with icon",
+                        on_icon_item,
+                        NULL);
+
+    /* Icon assignment
+        – theme name: "document-open"
+        – or absolute path: "/usr/share/pixmaps/firefox.png" */
+    set_menu_item_icon(icon_item, "/usr/share/icons/hicolor/48x48/apps/firefox.png");
+
     // New item that can be enabled/disabled (initially enabled)
     add_menu_separator(menu);
     toggle_item = add_menu_action(menu, "Toggle Item", on_toggle_item, NULL);
@@ -221,8 +238,8 @@ int main() {
     printf("Tray is running. Press Ctrl+C to exit.\n");
     sni_exec();  // Blocking, handles events correctly
 
-    destroy_handle(toggle_submenu); // Destruction of toggle submenu
-    destroy_handle(submenu); // Destruction of submenu
+    destroy_handle(toggle_submenu); // Destroy toggle submenu
+    destroy_handle(submenu); // Destroy submenu
     destroy_handle(menu);
     destroy_handle(tray);
     shutdown_tray_system();

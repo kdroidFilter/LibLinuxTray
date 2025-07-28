@@ -386,14 +386,15 @@ void *add_disabled_menu_action(void *menu_handle, const char *text, ActionCallba
     return result;
 }
 
-void add_checkable_menu_action(void *menu_handle, const char *text, int checked, ActionCallback cb, void *data) {
-    if (!menu_handle || !text) return;
+void* add_checkable_menu_action(void *menu_handle, const char *text, int checked, ActionCallback cb, void *data) {
+    if (!menu_handle || !text) return nullptr;
 
     QMenu *menu = static_cast<QMenu *>(menu_handle);
     QString qtext = QString::fromUtf8(text);
+    QAction *result = nullptr;
     auto mgr = SNIWrapperManager::instance();
 
-    QMetaObject::invokeMethod(mgr, [=]() {
+    QMetaObject::invokeMethod(mgr, [&]() {
         QAction *action = menu->addAction(qtext);
         action->setCheckable(true);
         action->setChecked(checked != 0);
@@ -402,9 +403,11 @@ void add_checkable_menu_action(void *menu_handle, const char *text, int checked,
                 if (cb) cb(data);
             });
         }
+        result = action;
     }, safeConn(mgr));
 
     sni_log("Added checkable menu action: %s (checked: %d)", text, checked);
+    return result;
 }
 
 void add_menu_separator(void *menu_handle) {
@@ -419,8 +422,10 @@ void add_menu_separator(void *menu_handle) {
 
     sni_log("Added menu separator");
 }
+// Une structure pour stocker la relation submenu -> action
+static QMap<QMenu*, QAction*> submenuToAction;
 
-void *create_submenu(void *menu_handle, const char *text) {
+void* create_submenu(void *menu_handle, const char *text) {
     if (!menu_handle || !text) return nullptr;
 
     QMenu *parentMenu = static_cast<QMenu *>(menu_handle);
@@ -431,10 +436,38 @@ void *create_submenu(void *menu_handle, const char *text) {
     QMetaObject::invokeMethod(mgr, [&]() {
         subMenu = parentMenu->addMenu(qtext);
         subMenu->setObjectName("SNISubMenu");
+
+        // Trouver l'action associée et la stocker
+        for (QAction* action : parentMenu->actions()) {
+            if (action->menu() == subMenu) {
+                submenuToAction[subMenu] = action;
+                break;
+            }
+        }
     }, safeConn(mgr));
 
     sni_log("Created submenu: %s", text);
     return subMenu;
+}
+
+void set_submenu_icon(void* submenu_handle, const char* icon_path_or_name) {
+    if (!submenu_handle || !icon_path_or_name) return;
+
+    QMenu *submenu = static_cast<QMenu *>(submenu_handle);
+    QString qstr = QString::fromUtf8(icon_path_or_name);
+    auto mgr = SNIWrapperManager::instance();
+
+    QMetaObject::invokeMethod(mgr, [submenu, qstr]() {
+        QAction* action = submenuToAction.value(submenu, nullptr);
+        if (action) {
+            QIcon ico = QIcon::fromTheme(qstr);
+            if (ico.isNull())
+                ico = QIcon(qstr);
+            action->setIcon(ico);
+        }
+    }, safeConn(mgr));
+
+    sni_log("Set submenu icon: %s", icon_path_or_name);
 }
 
 void set_menu_item_text(void *menu_item_handle, const char *text) {
@@ -450,6 +483,32 @@ void set_menu_item_text(void *menu_item_handle, const char *text) {
 
     sni_log("Set menu item text: %s", text);
 }
+
+void set_menu_item_icon(void *menu_item_handle,
+                        const char *icon_path_or_name)
+{
+    if (!menu_item_handle || !icon_path_or_name)
+        return;
+
+    QAction *action = static_cast<QAction *>(menu_item_handle);
+    QString qstr = QString::fromUtf8(icon_path_or_name);
+    auto mgr = SNIWrapperManager::instance();      // même schéma que les autres setters
+
+    QMetaObject::invokeMethod(mgr, [action, qstr]()
+    {
+        /* 1) Essaye d’abord le thème d’icônes */
+        QIcon ico = QIcon::fromTheme(qstr);
+
+        /* 2) Puis, si échec, interprète la chaîne comme chemin absolu */
+        if (ico.isNull())
+            ico = QIcon(qstr);
+
+        action->setIcon(ico);
+    }, safeConn(mgr));
+
+    sni_log("Set menu item icon: %s", icon_path_or_name);
+}
+
 
 void set_menu_item_enabled(void *menu_item_handle, int enabled) {
     if (!menu_item_handle) return;
