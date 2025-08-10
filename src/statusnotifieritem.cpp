@@ -29,15 +29,44 @@
 #include "statusnotifieritemadaptor.h"
 
 #include <QCoreApplication>
+#include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QDBusServiceWatcher>
 #include <QtEndian>
+#include <QMenu>
+#include <QIcon>
+#include <QPixmap>
+#include <QImage>
+#include <QSysInfo>
+#include <QSize>
+#include <QPoint>
+#include <QVariantMap>
+#include <QList>
 #include <utility>
 #include <dbusmenuexporter.h>
 
 int StatusNotifierItem::mServiceCounter = 0;
+
+// ------------------------------------------------------------------
+// Utilitaire : chemin DBus à utiliser quand il n'y a PAS de menu.
+// - KDE/Plasma : "/NO_DBUSMENU"
+// - GNOME/Autres : "/"
+// Détection simple via variables d'environnement.
+// ------------------------------------------------------------------
+static inline QString noMenuPathForEnvironment()
+{
+    const QString xdg  = qEnvironmentVariable("XDG_CURRENT_DESKTOP").toLower();
+    const QString sess = qEnvironmentVariable("DESKTOP_SESSION").toLower();
+    const bool kdeFull = qEnvironmentVariableIsSet("KDE_FULL_SESSION");
+
+    if (xdg.contains("kde") || xdg.contains("plasma") ||
+        sess.contains("kde") || sess.contains("plasma") || kdeFull) {
+        return QLatin1String("/NO_DBUSMENU");
+    }
+    return QLatin1String("/");
+}
 
 StatusNotifierItem::StatusNotifierItem(QString id, QObject *parent)
     : QObject(parent),
@@ -50,7 +79,7 @@ StatusNotifierItem::StatusNotifierItem(QString id, QObject *parent)
       mStatus(QLatin1String("Active")),
       mCategory(QLatin1String("ApplicationStatus")),
       mMenu(nullptr),
-      mMenuPath(QLatin1String("/")),              // « pas de menu »
+      mMenuPath(QLatin1String("/")),              // valeur initiale ; corrigée juste après
       mMenuExporter(nullptr),
       mSessionBus(QDBusConnection::connectToBus(QDBusConnection::SessionBus, mService))
 {
@@ -65,6 +94,9 @@ StatusNotifierItem::StatusNotifierItem(QString id, QObject *parent)
 
     // Publier l’objet
     mSessionBus.registerObject(QLatin1String("/StatusNotifierItem"), this);
+
+    // Chemin « pas de menu » adapté à l’environnement courant
+    setMenuPath(noMenuPathForEnvironment());
 
     registerToHost();
 
@@ -111,8 +143,8 @@ void StatusNotifierItem::onMenuDestroyed()
         mMenuExporter = nullptr;
     }
 
-    // Signaler qu’il n’y a plus de menu
-    setMenuPath(QLatin1String("/"));
+    // Signaler qu’il n’y a plus de menu (chemin dépend de l’ENV)
+    setMenuPath(noMenuPathForEnvironment());
 }
 
 /* ---------------------- Propriétés simples ---------------------- */
@@ -296,8 +328,8 @@ void StatusNotifierItem::setContextMenu(QMenu* menu)
         connect(mMenu, &QObject::destroyed, this, &StatusNotifierItem::onMenuDestroyed);
         mMenuExporter = new DBusMenuExporter{ QLatin1String("/MenuBar"), mMenu, mSessionBus };
     } else {
-        // Plus de menu
-        setMenuPath(QLatin1String("/"));
+        // Plus de menu (chemin adapté à l’ENV)
+        setMenuPath(noMenuPathForEnvironment());
     }
 }
 
@@ -308,6 +340,7 @@ void StatusNotifierItem::Activate(int x, int y)
     if (mStatus == QLatin1String("NeedsAttention"))
         mStatus = QLatin1String("Active");
 
+    Q_EMIT mAdaptor->NewStatus(mStatus);
     Q_EMIT activateRequested(QPoint(x, y));
 }
 
@@ -316,6 +349,7 @@ void StatusNotifierItem::SecondaryActivate(int x, int y)
     if (mStatus == QLatin1String("NeedsAttention"))
         mStatus = QLatin1String("Active");
 
+    Q_EMIT mAdaptor->NewStatus(mStatus);
     Q_EMIT secondaryActivateRequested(QPoint(x, y));
 }
 
@@ -375,9 +409,10 @@ IconPixmapList StatusNotifierItem::iconToPixmapList(const QIcon &icon)
         p.bytes  = QByteArray(reinterpret_cast<char*>(img.bits()),
                               img.sizeInBytes());
 
+        // D-Bus spécifie big-endian pour ARGB, convertir si nécessaire
         if (QSysInfo::ByteOrder == QSysInfo::LittleEndian) {
             auto *u = reinterpret_cast<quint32*>(p.bytes.data());
-            for (uint i = 0; i < p.bytes.size() / sizeof(quint32); ++i, ++u)
+            for (uint i = 0; i < static_cast<uint>(p.bytes.size()) / sizeof(quint32); ++i, ++u)
                 *u = qToBigEndian(*u);
         }
         pixmapList.append(p);
@@ -387,9 +422,19 @@ IconPixmapList StatusNotifierItem::iconToPixmapList(const QIcon &icon)
     if (pixmapList.isEmpty()) {
         QImage img = icon.pixmap(32, 32).toImage();
         if (!img.isNull()) {
-            IconPixmap p{32, 32,
-                         QByteArray(reinterpret_cast<char*>(img.bits()),
-                                    img.sizeInBytes())};
+            if (img.format() != QImage::Format_ARGB32)
+                img = img.convertToFormat(QImage::Format_ARGB32);
+
+            IconPixmap p;
+            p.width  = img.width();
+            p.height = img.height();
+            p.bytes  = QByteArray(reinterpret_cast<char*>(img.bits()),
+                                  img.sizeInBytes());
+            if (QSysInfo::ByteOrder == QSysInfo::LittleEndian) {
+                auto *u = reinterpret_cast<quint32*>(p.bytes.data());
+                for (uint i = 0; i < static_cast<uint>(p.bytes.size()) / sizeof(quint32); ++i, ++u)
+                    *u = qToBigEndian(*u);
+            }
             pixmapList.append(p);
         }
     }
