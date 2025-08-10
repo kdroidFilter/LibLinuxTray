@@ -92,6 +92,10 @@ EXPORT void sni_stop_exec(void);
 /* Manage debug mode  */
 EXPORT void sni_set_debug_mode(int enabled);
 
+/* Restart guard to suppress auto-shutdown during tray restart */
+EXPORT void sni_begin_restart_guard(void);
+EXPORT void sni_end_restart_guard(void);
+
 /* Force update of the tray (icon, tooltip, menu) */
 EXPORT void tray_update(void* handle);
 

@@ -26,12 +26,26 @@
 static std::atomic<bool> sni_running{true};
 static bool debug_mode = false;
 static int trayCount = 0;
+static std::atomic<bool> restart_guard{false};
+
+// Forward declaration so guard functions can log before definition
+static void sni_log(const char* format, ...);
 
 // -----------------------------------------------------------------------------
 // Function to enable/disable debug mode
 // -----------------------------------------------------------------------------
 extern "C" void sni_set_debug_mode(int enabled) {
     debug_mode = enabled != 0;
+}
+
+extern "C" void sni_begin_restart_guard(void) {
+    restart_guard.store(true);
+    sni_log("Restart guard: BEGIN");
+}
+
+extern "C" void sni_end_restart_guard(void) {
+    restart_guard.store(false);
+    sni_log("Restart guard: END");
 }
 
 // -----------------------------------------------------------------------------
@@ -197,7 +211,15 @@ void destroy_handle(void *handle) {
 
     if (trayCount <= 0) {
         QTimer::singleShot(100, []() {
-            shutdown_tray_system();
+            if (trayCount <= 0) {
+                if (!restart_guard.load()) {
+                    shutdown_tray_system();
+                } else {
+                    sni_log("Shutdown suppressed by restart guard");
+                }
+            } else {
+                sni_log("Shutdown skipped: trayCount=%d", trayCount);
+            }
         });
     }
 }
