@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QIcon>
 #include <QMenu>
+#include <QAction>
 #include <QTimer>
 #include <QDebug>
 #include "statusnotifieritem.h"
@@ -30,33 +31,29 @@ int main(int argc, char *argv[])
     trayIcon.setToolTipTitle("My App");
     trayIcon.setToolTipSubTitle("StatusNotifierItem Example");
 
-    /* ---------- Context Menu ---------- */
-    QMenu *menu = new QMenu();
-
-    // Existing Action 1
-    QAction *action1 = menu->addAction("Action 1");
-    QObject::connect(action1, &QAction::triggered, [](){
-        qDebug() << "Action 1 was clicked!";
-    });
-
-    // ----- New item: dynamically change the icon -----
-    QAction *changeIconAction = menu->addAction("Change icon");
-    QObject::connect(changeIconAction, &QAction::triggered,
-                     [&trayIcon, &useAltIcon, iconPath1, iconPath2](){
-        const QString &nextPath = useAltIcon ? iconPath1 : iconPath2;
-        QIcon newIcon(nextPath);
-        if (newIcon.isNull()) {
-            qWarning() << "Failed to load new icon" << nextPath;
-            return;
+    /* ---------- Toggleable Context Menu (starts empty) ---------- */
+    QMenu *menu = nullptr;
+    auto toggleMenu = [&]() {
+        if (menu == nullptr) {
+            menu = new QMenu();
+            QAction *item = menu->addAction("Item");
+            QObject::connect(item, &QAction::triggered, []() {
+                qDebug() << "Menu item clicked";
+            });
+            trayIcon.setContextMenu(menu);
+            qDebug() << "Menu attached";
+        } else {
+            trayIcon.setContextMenu(nullptr);
+            menu->deleteLater();
+            menu = nullptr;
+            qDebug() << "Menu detached";
         }
-        trayIcon.setIconByPixmap(newIcon);
-        useAltIcon = !useAltIcon;  // Reverse for next time
-        qDebug() << "Icon changed to" << nextPath;
-    });
+    };
 
-    // Exit the application
-    menu->addAction("Exit", &app, &QApplication::quit);
-    trayIcon.setContextMenu(menu);
+    // Primary click toggles the menu on/off
+    QObject::connect(&trayIcon, &StatusNotifierItem::activateRequested, [&](const QPoint &) {
+        toggleMenu();
+    });
 
     return app.exec();
 }

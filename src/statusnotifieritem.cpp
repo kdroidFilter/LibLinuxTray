@@ -265,7 +265,10 @@ void StatusNotifierItem::setContextMenu(QMenu* menu)
         setMenuPath(QLatin1String("/NO_DBUSMENU"));
 
     //Note: we need to destroy menu exporter before creating new one -> to free the DBus object path for new menu
-    delete mMenuExporter;
+    if (mMenuExporter) {
+        delete mMenuExporter;
+        mMenuExporter = nullptr;
+    }
     if (nullptr != mMenu)
     {
         connect(mMenu, &QObject::destroyed, this, &StatusNotifierItem::onMenuDestroyed);
