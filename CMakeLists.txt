@@ -8,10 +8,6 @@ set(CMAKE_AUTORCC ON)  # Enable automatic rcc generation
 set(CMAKE_AUTOUIC ON)  # Enable automatic uic generation
 set(CMAKE_INCLUDE_CURRENT_DIR ON)  # Include current directory for generated files
 
-# Prefer the older libstdc++ string ABI for wider compatibility (e.g., Debian 12 Bookworm)
-# This helps avoid requiring newer CXXABI/GLIBCXX symbols on target systems.
-add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
-
 # Qt5
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets DBus)
 
@@ -59,12 +55,6 @@ target_link_libraries(tray
         Qt5::Core Qt5::Gui Qt5::Widgets Qt5::DBus
         ${DBUSMENU_LIBRARIES}
 )
-
-# On GCC/Clang, statically link libstdc++ and libgcc into the shared library to reduce
-# runtime dependency on newer system C++ runtimes (improves Debian 12 compatibility).
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_link_options(tray PRIVATE -static-libstdc++ -static-libgcc)
-endif()
 
 # Static library for the demo
 add_library(statusnotifier STATIC ${SOURCES} ${HEADERS})
