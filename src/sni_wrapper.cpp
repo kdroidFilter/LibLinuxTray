@@ -146,6 +146,9 @@ int init_tray_system(void) {
     // Set environment variables BEFORE any Qt object creation
     static std::once_flag env_flag;
     std::call_once(env_flag, []() {
+            // Force Qt to avoid GLib event dispatcher to prevent GLib context assertion issues
+            // when running QApplication in a non-main thread.
+            setenv("QT_NO_GLIB", "1", 1);
         if (!debug_mode) {
             setenv("QT_LOGGING_RULES", "*=false", 1);
             setenv("QT_FATAL_WARNINGS", "0", 1);
