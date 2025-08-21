@@ -23,7 +23,38 @@
 #include <cstdio>
 #include <cstdarg>
 
+#include <glib.h>
+
+// --- GLib warning silencer ----------------------------------------------------
+// We silence GLib/GObject/GDK warnings to avoid noisy console output when
+// Qt (Widgets / GTK platformtheme) is used from a non-main thread.
+// We keep this off in debug mode so developers still see logs.
+static bool g_glibSilencerInstalled = false;
+
+static void glib_log_handler(const gchar *log_domain,
+                             GLogLevelFlags log_level,
+                             const gchar *message,
+                             gpointer user_data) {
+    // Drop all messages.
+    (void)log_domain; (void)log_level; (void)message; (void)user_data;
+}
+
+static void install_glib_warning_silencer(bool enable) {
+    if (!enable || g_glibSilencerInstalled) return;
+    g_glibSilencerInstalled = true;
+    const GLogLevelFlags mask = (GLogLevelFlags)(G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION);
+    g_log_set_handler("GLib", mask, glib_log_handler, nullptr);
+    g_log_set_handler("GLib-GObject", mask, glib_log_handler, nullptr);
+    g_log_set_handler("Gdk", mask, glib_log_handler, nullptr);
+    g_log_set_handler("Gtk", mask, glib_log_handler, nullptr);
+}
+
+
 static std::atomic<bool> sni_running{true};
+
+// Global shutdown guard to avoid double teardown ordering issues between Qt/GLib.
+static std::atomic<bool> g_shuttingDown{false};
+
 static bool debug_mode = false;
 static int trayCount = 0;
 
@@ -149,12 +180,12 @@ int init_tray_system(void) {
             // Force Qt to avoid GLib event dispatcher to prevent GLib context assertion issues
             // when running QApplication in a non-main thread.
             setenv("QT_NO_GLIB", "1", 1);
-            // Avoid loading GTK-based Qt platform theme (QGtk3Theme), which pulls GTK/GDK
-            // and may cause 'GdkDisplayManager' registration warnings and GLib assertions.
-            setenv("QT_QPA_PLATFORMTHEME", "generic", 1);
-            // Ensure we use the XCB backend explicitly and a non-GTK style to avoid GTK deps
+            // Keep Qt away from GTK/GDK to avoid GLib/GDK type re-registration
             setenv("QT_STYLE_OVERRIDE", "Fusion", 1);
+            setenv("QT_QPA_PLATFORMTHEME", "qt5ct", 1);
         if (!debug_mode) {
+            // Silence GLib/GObject warnings in release mode
+            install_glib_warning_silencer(true);
             setenv("QT_LOGGING_RULES", "*=false", 1);
             setenv("QT_FATAL_WARNINGS", "0", 1);
         }
@@ -170,6 +201,8 @@ int init_tray_system(void) {
     }
 }
 void shutdown_tray_system(void) {
+    // Prevent double shutdown
+    bool expected=false; if (!g_shuttingDown.compare_exchange_strong(expected,true)) return;
     sni_log("Shutting down tray system");
     SNIWrapperManager::shutdown();
     QtThreadManager::shutdown();
