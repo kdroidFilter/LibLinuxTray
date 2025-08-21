@@ -149,6 +149,11 @@ int init_tray_system(void) {
             // Force Qt to avoid GLib event dispatcher to prevent GLib context assertion issues
             // when running QApplication in a non-main thread.
             setenv("QT_NO_GLIB", "1", 1);
+            // Avoid loading GTK-based Qt platform theme (QGtk3Theme), which pulls GTK/GDK
+            // and may cause 'GdkDisplayManager' registration warnings and GLib assertions.
+            setenv("QT_QPA_PLATFORMTHEME", "generic", 1);
+            // Ensure we use the XCB backend explicitly and a non-GTK style to avoid GTK deps
+            setenv("QT_STYLE_OVERRIDE", "Fusion", 1);
         if (!debug_mode) {
             setenv("QT_LOGGING_RULES", "*=false", 1);
             setenv("QT_FATAL_WARNINGS", "0", 1);
